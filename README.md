@@ -28,17 +28,46 @@ python start_server.py --mode stdio  # stdio MCP
 python start_server.py --mode api    # RESTful API
 ```
 
-### 4. Configure VSCode GitHub Copilot
-Add MCP server configuration in VSCode:
+### 4. Configure Claude Code/MCP Clients
+
+#### Option 1: HTTP MCP (Recommended)
+Add MCP server configuration in Claude Code or VSCode GitHub Copilot:
 ```json
 {
   "servers": {
     "ai-foundry-agent": {
-      "type": "streamableHttp",
+      "type": "streamableHttp", 
       "url": "http://127.0.0.1:8000/mcp/",
       "headers": {
         "Content-Type": "application/json",
         "Authorization": "Bearer your_token_here"
+      }
+    }
+  }
+}
+```
+
+#### Option 2: stdio MCP
+For stdio-based MCP clients, configure environment variable and client config:
+
+**Environment Variable:**
+```bash
+export MCP_STDIO_TOKEN="your_token_here"
+# On Windows:
+set MCP_STDIO_TOKEN=your_token_here
+```
+
+**MCP Client Configuration:**
+```json
+{
+  "servers": {
+    "ai-foundry-agent": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["start_server.py", "--mode", "stdio"],
+      "cwd": "/path/to/ai-foundry-agent-mcp",
+      "env": {
+        "MCP_STDIO_TOKEN": "your_token_here"
       }
     }
   }
@@ -75,6 +104,7 @@ This is a Model Context Protocol (MCP) server that enables developers to access 
 | `AZURE_CLIENT_SECRET` | Azure Application Client Secret | `your_client_secret_here` |
 | `AZURE_ENDPOINT` | Azure AI Project Endpoint | `https://your-project.services.ai.azure.com/api/projects/your-project` |
 | `AZURE_AGENT_ID` | Azure AI Agent ID | `asst_xxxxxxxxxxxxxxxxx` |
+| `MCP_STDIO_TOKEN` | Token for stdio mode authentication (optional) | `your_stdio_token_here` |
 
 ### Launch Parameters
 

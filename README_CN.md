@@ -28,8 +28,10 @@ python start_server.py --mode stdio  # stdio MCP
 python start_server.py --mode api    # RESTful API
 ```
 
-### 4. 配置 VSCode GitHub Copilot
-在 VSCode 的 MCP 服务器配置中添加：
+### 4. 配置 Claude Code/MCP 客户端
+
+#### 选项 1: HTTP MCP (推荐)
+在 Claude Code 或 VSCode GitHub Copilot 的 MCP 服务器配置中添加：
 ```json
 {
   "servers": {
@@ -39,6 +41,33 @@ python start_server.py --mode api    # RESTful API
       "headers": {
         "Content-Type": "application/json",
         "Authorization": "Bearer your_token_here"
+      }
+    }
+  }
+}
+```
+
+#### 选项 2: stdio MCP
+对于基于 stdio 的 MCP 客户端，需配置环境变量和客户端配置：
+
+**环境变量:**
+```bash
+export MCP_STDIO_TOKEN="your_token_here"
+# Windows 下:
+set MCP_STDIO_TOKEN=your_token_here
+```
+
+**MCP 客户端配置:**
+```json
+{
+  "servers": {
+    "ai-foundry-agent": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["start_server.py", "--mode", "stdio"],
+      "cwd": "/path/to/ai-foundry-agent-mcp",
+      "env": {
+        "MCP_STDIO_TOKEN": "your_token_here"
       }
     }
   }
@@ -75,6 +104,7 @@ python start_server.py --mode api    # RESTful API
 | `AZURE_CLIENT_SECRET` | Azure 应用客户端密钥 | `your_client_secret_here` |
 | `AZURE_ENDPOINT` | Azure AI Project 端点 | `https://your-project.services.ai.azure.com/api/projects/your-project` |
 | `AZURE_AGENT_ID` | Azure AI Agent ID | `asst_xxxxxxxxxxxxxxxxx` |
+| `MCP_STDIO_TOKEN` | stdio 模式认证 token (可选) | `your_stdio_token_here` |
 
 ### 启动参数
 

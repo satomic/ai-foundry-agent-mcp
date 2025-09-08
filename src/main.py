@@ -147,24 +147,30 @@ async def handle_list_tools():
 # Global variable to store current request token for MCP handlers
 _current_token: Optional[str] = None
 
+# Default token for stdio mode (can be overridden by environment variable)
+_stdio_token: Optional[str] = os.getenv('MCP_STDIO_TOKEN', 'default_stdio_token')
+
 
 @server.call_tool()
 async def handle_call_tool(name: str, arguments: dict[str, Any] | None) -> list[dict[str, Any]]:
     """
     Handle tool calls to the Azure AI Foundry Agent.
-    Uses the token from current HTTP request context to identify user.
+    For HTTP mode: Uses the token from current HTTP request context to identify user.
+    For stdio mode: Uses the MCP_STDIO_TOKEN environment variable.
     """
     if arguments is None:
         arguments = {}
 
-    # Get token from current HTTP request context
-    global _current_token
-    if not _current_token:
-        return [{"type": "text", "text": "Error: No authentication token found"}]
+    # Get token from current HTTP request context or use stdio token
+    global _current_token, _stdio_token
+    token = _current_token or _stdio_token
+    
+    if not token:
+        return [{"type": "text", "text": "Error: No authentication token found. For stdio mode, set MCP_STDIO_TOKEN environment variable."}]
 
     # Generate user ID from token
-    user_id = get_user_id_from_token(_current_token)
-    logger.info(f"Handling tool call '{name}' for user {user_id} (token: {_current_token[:8]}...)")
+    user_id = get_user_id_from_token(token)
+    logger.info(f"Handling tool call '{name}' for user {user_id} (token: {token[:8]}... mode: {'http' if _current_token else 'stdio'})")
 
     try:
         if name == "send_message":
