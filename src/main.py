@@ -231,7 +231,9 @@ async def handle_mcp_request(request: Request, authorization: Optional[str] = He
         
         # Parse JSON-RPC request
         try:
-            rpc_request = json.loads(body.decode())
+            rpc_request = json.loads(body.decode('utf-8'))
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid UTF-8 encoding in request body")
         except json.JSONDecodeError:
             raise HTTPException(status_code=400, detail="Invalid JSON in request body")
         

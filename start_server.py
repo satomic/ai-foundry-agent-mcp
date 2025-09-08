@@ -103,10 +103,12 @@ async def start_restful_api_server(host: str = "127.0.0.1", port: int = 8000):
     """Start RESTful API Server"""
     import uvicorn
     import hashlib
+    import json
     from fastapi import FastAPI, HTTPException, Header, Request
     from fastapi.responses import JSONResponse
     from azure_agent import AzureAgentManager
     
+    # Configure FastAPI to handle UTF-8 properly
     app = FastAPI(title="Azure AI Foundry Agent REST API")
     agent_manager = AzureAgentManager()
     
@@ -131,7 +133,16 @@ async def start_restful_api_server(host: str = "127.0.0.1", port: int = 8000):
         if not token:
             raise HTTPException(status_code=401, detail="Missing Authorization header")
         
-        body = await request.json()
+        try:
+            # Handle UTF-8 encoding properly
+            body_bytes = await request.body()
+            body_str = body_bytes.decode('utf-8')
+            body = json.loads(body_str)
+        except UnicodeDecodeError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid UTF-8 encoding: {str(e)}")
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
+        
         message = body.get("message")
         if not message:
             raise HTTPException(status_code=400, detail="Message is required")
@@ -180,7 +191,14 @@ async def start_restful_api_server(host: str = "127.0.0.1", port: int = 8000):
     print("All endpoints require Authorization: Bearer <token> header")
     print("=" * 60)
     
-    config = uvicorn.Config(app, host=host, port=port, log_level="info")
+    config = uvicorn.Config(
+        app, 
+        host=host, 
+        port=port, 
+        log_level="info",
+        # Ensure proper UTF-8 handling
+        access_log=False,  # Reduce noise
+    )
     server = uvicorn.Server(config)
     
     try:
