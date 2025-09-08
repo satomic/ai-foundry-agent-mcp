@@ -11,6 +11,7 @@ import logging
 import os
 import hashlib
 import threading
+import signal
 from typing import Optional, Dict
 from dotenv import load_dotenv
 
@@ -91,12 +92,16 @@ class AzureAgentManager:
         self.user_threads: Dict[str, str] = self._load_user_thread_mapping()
         
         # Thread safety lock for user-thread mapping operations
-        self._mapping_lock = threading.Lock()
+        self._mapping_lock = asyncio.Lock()  # Use async lock instead of thread lock
         
         # Current user context (will be set per request)
         self._current_user_id: Optional[str] = None
         
         logger.info(f"Initialized Azure Agent Manager for agent {agent_id} (test_mode: {self.test_mode})")
+        
+        # Disable verbose Azure HTTP logging for this instance
+        logging.getLogger('azure.core.pipeline.policies.http_logging_policy').setLevel(logging.WARNING)
+        logging.getLogger('azure').setLevel(logging.WARNING)
     
     async def _get_agent(self):
         """Get the agent instance, loading it if necessary."""
@@ -128,7 +133,7 @@ class AzureAgentManager:
             logger.warning(f"Failed to load user thread mapping: {e}")
         return {}
     
-    def _save_user_thread_mapping_locked(self):
+    async def _save_user_thread_mapping_locked(self):
         """Save user-thread mapping to JSON file. Must be called with lock held."""
         try:
             with open(self.mapping_file, 'w') as f:
@@ -147,13 +152,13 @@ class AzureAgentManager:
             str: Success message with new thread info
         """
         try:
-            with self._mapping_lock:
+            async with self._mapping_lock:
                 old_thread_id = self.user_threads.get(user_id, "None")
                 
                 # Remove old thread mapping
                 if user_id in self.user_threads:
                     del self.user_threads[user_id]
-                    self._save_user_thread_mapping_locked()
+                    await self._save_user_thread_mapping_locked()
                     logger.info(f"Cleared old thread {old_thread_id} for user {user_id}")
             
             # Create new thread for user
@@ -185,14 +190,14 @@ class AzureAgentManager:
     async def _ensure_user_thread(self, user_id: str) -> str:
         """Ensure user has a thread, create one if needed.
         
-        Thread-safe implementation to prevent concurrent thread creation
+        Async-safe implementation to prevent concurrent thread creation
         for the same user.
         """
         if not user_id:
             raise ValueError("User ID is required.")
         
-        # Thread-safe check and creation
-        with self._mapping_lock:
+        # Async-safe check and creation
+        async with self._mapping_lock:
             # Double-check pattern: check again inside lock
             if user_id in self.user_threads:
                 thread_id = self.user_threads[user_id]
@@ -209,15 +214,19 @@ class AzureAgentManager:
                 import time
                 thread_id = f"test_thread_{user_id}_{int(time.time())}"
             else:
-                thread = await asyncio.to_thread(self.project.agents.threads.create)
+                # Add timeout to prevent hanging
+                thread = await asyncio.wait_for(
+                    asyncio.to_thread(self.project.agents.threads.create),
+                    timeout=30.0  # 30 second timeout
+                )
                 thread_id = thread.id
             
             # Save mapping with lock
-            with self._mapping_lock:
+            async with self._mapping_lock:
                 # Double-check again in case another request created thread concurrently
                 if user_id not in self.user_threads:
                     self.user_threads[user_id] = thread_id
-                    self._save_user_thread_mapping_locked()
+                    await self._save_user_thread_mapping_locked()
                     logger.info(f"Created new thread {thread_id} for user {user_id}")
                     return thread_id
                 else:
@@ -226,6 +235,9 @@ class AzureAgentManager:
                     logger.info(f"Race condition detected: using existing thread {existing_thread_id} for user {user_id}")
                     return existing_thread_id
             
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout creating thread for user {user_id}")
+            raise Exception("Thread creation timeout")
         except Exception as e:
             logger.error(f"Failed to create thread for user {user_id}: {str(e)}")
             raise
@@ -265,18 +277,24 @@ class AzureAgentManager:
                 return f"Mock response from {agent.name} for message: '{message}'"
             
             # Create message
-            await asyncio.to_thread(
-                self.project.agents.messages.create,
-                thread_id=thread_id,
-                role="user",
-                content=message
+            await asyncio.wait_for(
+                asyncio.to_thread(
+                    self.project.agents.messages.create,
+                    thread_id=thread_id,
+                    role="user",
+                    content=message
+                ),
+                timeout=30.0  # 30 second timeout
             )
             
             # Create and process run
-            run = await asyncio.to_thread(
-                self.project.agents.runs.create_and_process,
-                thread_id=thread_id,
-                agent_id=agent.id
+            run = await asyncio.wait_for(
+                asyncio.to_thread(
+                    self.project.agents.runs.create_and_process,
+                    thread_id=thread_id,
+                    agent_id=agent.id
+                ),
+                timeout=120.0  # 2 minute timeout for agent processing
             )
             
             if run.status == "failed":
@@ -285,10 +303,13 @@ class AzureAgentManager:
                 return error_msg
             
             # Get the latest messages
-            messages = await asyncio.to_thread(
-                self.project.agents.messages.list,
-                thread_id=thread_id,
-                order=ListSortOrder.DESCENDING
+            messages = await asyncio.wait_for(
+                asyncio.to_thread(
+                    self.project.agents.messages.list,
+                    thread_id=thread_id,
+                    order=ListSortOrder.DESCENDING
+                ),
+                timeout=30.0  # 30 second timeout
             )
             
             # Find the latest assistant message
@@ -300,6 +321,10 @@ class AzureAgentManager:
             
             return "No response received from agent."
             
+        except asyncio.TimeoutError:
+            error_msg = f"Request timeout while processing message: '{message[:50]}...'"
+            logger.error(error_msg)
+            return error_msg
         except Exception as e:
             error_msg = f"Failed to send message: {str(e)}"
             logger.error(error_msg)
@@ -326,10 +351,13 @@ class AzureAgentManager:
                 # Mock messages in test mode
                 return f"Mock messages for user {user_id} in thread {thread_id}:\nuser: Hello\nassistant: Mock response"
             
-            messages = await asyncio.to_thread(
-                self.project.agents.messages.list,
-                thread_id=thread_id,
-                order=ListSortOrder.ASCENDING
+            messages = await asyncio.wait_for(
+                asyncio.to_thread(
+                    self.project.agents.messages.list,
+                    thread_id=thread_id,
+                    order=ListSortOrder.ASCENDING
+                ),
+                timeout=30.0  # 30 second timeout
             )
             
             formatted_messages = []

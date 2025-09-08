@@ -13,6 +13,7 @@ import os
 import argparse
 import asyncio
 import logging
+import signal
 from typing import Optional
 from dotenv import load_dotenv
 
@@ -23,6 +24,31 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 load_dotenv()
 
 
+def setup_signal_handlers():
+    """Setup signal handlers for graceful shutdown"""
+    def signal_handler(signum, frame):
+        print("\nReceived shutdown signal. Stopping server...")
+        # Get the current event loop and stop it
+        loop = None
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            pass
+        
+        if loop and loop.is_running():
+            # Cancel all tasks
+            for task in asyncio.all_tasks(loop):
+                task.cancel()
+            loop.stop()
+        
+        sys.exit(0)
+    
+    # Handle both SIGINT (Ctrl+C) and SIGTERM
+    signal.signal(signal.SIGINT, signal_handler)
+    if hasattr(signal, 'SIGTERM'):
+        signal.signal(signal.SIGTERM, signal_handler)
+
+
 def setup_logging(level: str = "info"):
     """Set logging level"""
     log_level = getattr(logging, level.upper(), logging.INFO)
@@ -30,6 +56,11 @@ def setup_logging(level: str = "info"):
         level=log_level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
+    
+    # Disable verbose Azure HTTP logging
+    logging.getLogger('azure.core.pipeline.policies.http_logging_policy').setLevel(logging.WARNING)
+    logging.getLogger('azure').setLevel(logging.WARNING)
+    logging.getLogger('urllib3').setLevel(logging.WARNING)
 
 
 async def start_http_mcp_server(host: str = "127.0.0.1", port: int = 8000):
@@ -41,7 +72,14 @@ async def start_http_mcp_server(host: str = "127.0.0.1", port: int = 8000):
     print(f'  "url": "http://{host}:{port}/mcp/"')
     print("  Don't forget to add Authorization header!")
     print("=" * 60)
-    await http_main()
+    
+    try:
+        await http_main()
+    except asyncio.CancelledError:
+        print("HTTP MCP Server cancelled")
+    except Exception as e:
+        print(f"HTTP MCP Server error: {e}")
+        raise
 
 
 async def start_stdio_mcp_server():
@@ -51,7 +89,14 @@ async def start_stdio_mcp_server():
     print("This mode is for stdio-based MCP clients")
     print("Server will use stdin/stdout for communication")
     print("=" * 60)
-    await stdio_main()
+    
+    try:
+        await stdio_main()
+    except asyncio.CancelledError:
+        print("stdio MCP Server cancelled")
+    except Exception as e:
+        print(f"stdio MCP Server error: {e}")
+        raise
 
 
 async def start_restful_api_server(host: str = "127.0.0.1", port: int = 8000):
@@ -137,7 +182,14 @@ async def start_restful_api_server(host: str = "127.0.0.1", port: int = 8000):
     
     config = uvicorn.Config(app, host=host, port=port, log_level="info")
     server = uvicorn.Server(config)
-    await server.serve()
+    
+    try:
+        await server.serve()
+    except asyncio.CancelledError:
+        print("RESTful API Server cancelled")
+    except Exception as e:
+        print(f"RESTful API Server error: {e}")
+        raise
 
 
 def main():
@@ -192,6 +244,9 @@ Examples:
     )
     
     args = parser.parse_args()
+    
+    # Set up signal handlers first
+    setup_signal_handlers()
     
     # Set up logging
     setup_logging(args.log_level)
