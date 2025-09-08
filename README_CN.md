@@ -183,6 +183,190 @@ python start_server.py [选项]
 - **POST** `/api/clear_conversation` - 清空对话
 - **POST** `/api/new_conversation` - 新建对话
 
+### RESTful API 使用指南
+
+当服务器运行在 API 模式（`--mode api`）时，你可以通过标准的 HTTP 请求使用 curl 或任何 HTTP 客户端与 Azure AI Foundry Agent 进行交互。
+
+#### 身份验证
+所有 API 请求都需要在 Authorization header 中提供 Bearer token 进行身份验证：
+```bash
+Authorization: Bearer your_token_here
+```
+
+#### API 端点与 curl 示例
+
+##### 1. 发送消息
+向 Azure AI Agent 发送消息并接收回复。
+
+**端点:** `POST /api/send_message`
+
+**请求体:**
+```json
+{
+  "message": "你好，请介绍一下你自己"
+}
+```
+
+**curl 示例:**
+```bash
+curl -X POST http://localhost:8000/api/send_message \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{
+    "message": "你好，请介绍一下你自己"
+  }'
+```
+
+**响应:**
+```json
+{
+  "success": true,
+  "response": "你好！我是由 Azure AI Foundry 提供支持的 AI 助手...",
+  "message_id": "msg_abc123"
+}
+```
+
+##### 2. 列出消息
+获取当前对话线程中的所有消息。
+
+**端点:** `GET /api/list_messages`
+
+**curl 示例:**
+```bash
+curl -X GET http://localhost:8000/api/list_messages \
+  -H "Authorization: Bearer your_token_here"
+```
+
+**响应:**
+```json
+{
+  "success": true,
+  "messages": [
+    {
+      "id": "msg_abc123",
+      "role": "user",
+      "content": "你好，请介绍一下你自己",
+      "timestamp": "2024-01-15T10:30:00Z"
+    },
+    {
+      "id": "msg_def456",
+      "role": "assistant", 
+      "content": "你好！我是一个 AI 助手...",
+      "timestamp": "2024-01-15T10:30:05Z"
+    }
+  ],
+  "thread_id": "thread_xyz789"
+}
+```
+
+##### 3. 清空对话
+清空当前对话并开始新的线程。
+
+**端点:** `POST /api/clear_conversation`
+
+**curl 示例:**
+```bash
+curl -X POST http://localhost:8000/api/clear_conversation \
+  -H "Authorization: Bearer your_token_here"
+```
+
+**响应:**
+```json
+{
+  "success": true,
+  "message": "对话已成功清空",
+  "new_thread_id": "thread_new123"
+}
+```
+
+##### 4. 新建对话
+开始新的对话线程（等同于 clear_conversation）。
+
+**端点:** `POST /api/new_conversation`
+
+**curl 示例:**
+```bash
+curl -X POST http://localhost:8000/api/new_conversation \
+  -H "Authorization: Bearer your_token_here"
+```
+
+**响应:**
+```json
+{
+  "success": true,
+  "message": "新对话已开始",
+  "thread_id": "thread_new456"
+}
+```
+
+#### 错误处理
+
+**身份验证错误:**
+```bash
+# 缺失或无效的 token
+curl -X POST http://localhost:8000/api/send_message \
+  -H "Content-Type: application/json" \
+  -d '{"message": "test"}'
+```
+
+**响应:**
+```json
+{
+  "success": false,
+  "error": "未授权：无效或缺失的 token",
+  "code": 401
+}
+```
+
+**验证错误:**
+```bash
+# 缺失必需字段
+curl -X POST http://localhost:8000/api/send_message \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{}'
+```
+
+**响应:**
+```json
+{
+  "success": false,
+  "error": "缺失必需字段：message",
+  "code": 400
+}
+```
+
+#### 完整示例工作流
+```bash
+# 1. 开始新对话
+curl -X POST http://localhost:8000/api/new_conversation \
+  -H "Authorization: Bearer your_token_here"
+
+# 2. 发送消息
+curl -X POST http://localhost:8000/api/send_message \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{
+    "message": "什么是 Azure AI Foundry？"
+  }'
+
+# 3. 发送后续消息
+curl -X POST http://localhost:8000/api/send_message \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{
+    "message": "能详细介绍一下它的功能特性吗？"
+  }'
+
+# 4. 列出对话中的所有消息
+curl -X GET http://localhost:8000/api/list_messages \
+  -H "Authorization: Bearer your_token_here"
+
+# 5. 完成后清空对话
+curl -X POST http://localhost:8000/api/clear_conversation \
+  -H "Authorization: Bearer your_token_here"
+```
+
 ## 高级主题
 
 ### Token 认证与用户隔离

@@ -183,6 +183,190 @@ Start new conversation thread (equivalent to clear_conversation).
 - **POST** `/api/clear_conversation` - Clear conversation
 - **POST** `/api/new_conversation` - Create new conversation
 
+### RESTful API Usage Guide
+
+When running the server in API mode (`--mode api`), you can interact with the Azure AI Foundry Agent through standard HTTP requests using curl or any HTTP client.
+
+#### Authentication
+All API requests require authentication via Bearer token in the Authorization header:
+```bash
+Authorization: Bearer your_token_here
+```
+
+#### API Endpoints with curl Examples
+
+##### 1. Send Message
+Send a message to the Azure AI Agent and receive a response.
+
+**Endpoint:** `POST /api/send_message`
+
+**Request Body:**
+```json
+{
+  "message": "Hello, please introduce yourself"
+}
+```
+
+**curl Example:**
+```bash
+curl -X POST http://localhost:8000/api/send_message \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{
+    "message": "Hello, please introduce yourself"
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "response": "Hello! I'm an AI assistant powered by Azure AI Foundry...",
+  "message_id": "msg_abc123"
+}
+```
+
+##### 2. List Messages
+Retrieve all messages in the current conversation thread.
+
+**Endpoint:** `GET /api/list_messages`
+
+**curl Example:**
+```bash
+curl -X GET http://localhost:8000/api/list_messages \
+  -H "Authorization: Bearer your_token_here"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "messages": [
+    {
+      "id": "msg_abc123",
+      "role": "user",
+      "content": "Hello, please introduce yourself",
+      "timestamp": "2024-01-15T10:30:00Z"
+    },
+    {
+      "id": "msg_def456",
+      "role": "assistant", 
+      "content": "Hello! I'm an AI assistant...",
+      "timestamp": "2024-01-15T10:30:05Z"
+    }
+  ],
+  "thread_id": "thread_xyz789"
+}
+```
+
+##### 3. Clear Conversation
+Clear the current conversation and start a new thread.
+
+**Endpoint:** `POST /api/clear_conversation`
+
+**curl Example:**
+```bash
+curl -X POST http://localhost:8000/api/clear_conversation \
+  -H "Authorization: Bearer your_token_here"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Conversation cleared successfully",
+  "new_thread_id": "thread_new123"
+}
+```
+
+##### 4. New Conversation
+Start a new conversation thread (equivalent to clear_conversation).
+
+**Endpoint:** `POST /api/new_conversation`
+
+**curl Example:**
+```bash
+curl -X POST http://localhost:8000/api/new_conversation \
+  -H "Authorization: Bearer your_token_here"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "New conversation started",
+  "thread_id": "thread_new456"
+}
+```
+
+#### Error Handling
+
+**Authentication Error:**
+```bash
+# Missing or invalid token
+curl -X POST http://localhost:8000/api/send_message \
+  -H "Content-Type: application/json" \
+  -d '{"message": "test"}'
+```
+
+**Response:**
+```json
+{
+  "success": false,
+  "error": "Unauthorized: Invalid or missing token",
+  "code": 401
+}
+```
+
+**Validation Error:**
+```bash
+# Missing required field
+curl -X POST http://localhost:8000/api/send_message \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{}'
+```
+
+**Response:**
+```json
+{
+  "success": false,
+  "error": "Missing required field: message",
+  "code": 400
+}
+```
+
+#### Complete Example Workflow
+```bash
+# 1. Start a new conversation
+curl -X POST http://localhost:8000/api/new_conversation \
+  -H "Authorization: Bearer your_token_here"
+
+# 2. Send a message
+curl -X POST http://localhost:8000/api/send_message \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{
+    "message": "What is Azure AI Foundry?"
+  }'
+
+# 3. Send a follow-up message
+curl -X POST http://localhost:8000/api/send_message \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{
+    "message": "Can you give me more details about its features?"
+  }'
+
+# 4. List all messages in the conversation
+curl -X GET http://localhost:8000/api/list_messages \
+  -H "Authorization: Bearer your_token_here"
+
+# 5. Clear conversation when done
+curl -X POST http://localhost:8000/api/clear_conversation \
+  -H "Authorization: Bearer your_token_here"
+```
+
 ## Advanced Topics
 
 ### Token Authentication & User Isolation
